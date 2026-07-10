@@ -117,6 +117,19 @@ ssh you@100.101.102.103      # or by the tailnet IP that tailtap printed on star
 
 The username (`you@`) does not matter for login. The tailnet authorizes you, and the shell runs as whoever launched `tailtap` on the target. `tailtap` always opens an interactive shell. It ignores a command passed as `ssh host 'cmd'`, so request a PTY. Point your automation at the hostname.
 
+### Pick a memorable name
+
+The `-name` you pass becomes the SSH hostname, so give each machine a short, memorable name and connect with exactly that:
+
+| Run on the target | Connect from your laptop |
+|-------------------|--------------------------|
+| `tailtap -name booth`      | `ssh booth` |
+| `tailtap -name gallery-pc` | `ssh gallery-pc` |
+| `tailtap -name lab-01`     | `ssh lab-01` |
+| `tailtap -name reception`  | `ssh reception` |
+
+Without `-name`, nodes get the default `tailtap`, and a second one becomes `tailtap-1`, `tailtap-2`, and so on, which is why a name is worth setting. Names must be unique on your tailnet; reusing a name for a new machine makes Tailscale append a number.
+
 ### File transfer (SFTP and scp)
 
 The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same tailnet connection with no extra setup: `sftp`, `scp`, `rsync` over SSH, and editor remote-file tools like VS Code (Remote-SSH or an SFTP extension).

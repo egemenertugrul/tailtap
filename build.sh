@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# Build all tailtap targets with the Tailscale auth key baked in.
+# Build all tailtap targets with a Tailscale auth key baked in.
 #
-#   ./build.sh tskey-auth-xxxxxxxxxxxx
-#   KEY=tskey-auth-xxxx ./build.sh
+# Supply the key one of three ways:
+#   ./build.sh tskey-auth-xxxx                       # pass it explicitly
+#   KEY=tskey-auth-xxxx ./build.sh                   # via env
+#   TS_CLIENT_ID=... TS_CLIENT_SECRET=... ./build.sh # auto-mint via OAuth (mint-key.sh)
 #
 # The key ends up INSIDE each binary — treat every file in dist/ as a secret.
 set -euo pipefail
 
+cd "$(dirname "$0")"
+
 KEY="${1:-${KEY:-}}"
 if [[ -z "$KEY" ]]; then
-  echo "usage: $0 <tskey-auth-...>   (or set KEY env var)" >&2
-  exit 1
+  if [[ -n "${TS_CLIENT_ID:-}" && -n "${TS_CLIENT_SECRET:-}" ]]; then
+    echo "no key given — minting one via OAuth (mint-key.sh)..." >&2
+    KEY="$(./mint-key.sh)"
+  else
+    echo "usage: $0 <tskey-auth-...>   (or set KEY, or set TS_CLIENT_ID + TS_CLIENT_SECRET to auto-mint)" >&2
+    exit 1
+  fi
 fi
 
 # Prefer a locally-installed Go SDK if it's on PATH, else fall back to ~/.local.
@@ -18,7 +27,6 @@ if ! command -v go >/dev/null 2>&1; then
   export PATH="$HOME/.local/go-sdk/go/bin:$PATH"
 fi
 
-cd "$(dirname "$0")"
 mkdir -p dist
 LDFLAGS="-s -w -X main.authKey=$KEY"
 

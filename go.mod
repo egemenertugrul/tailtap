@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/pkg/sftp v1.13.10
 	golang.org/x/crypto v0.54.0
 	tailscale.com v1.100.0
 )
@@ -29,6 +30,7 @@ require (
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect

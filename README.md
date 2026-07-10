@@ -15,6 +15,7 @@ Built for "walk up to a machine at a venue / lab / client site, get remote acces
 - Runs an SSH server (via [`gliderlabs/ssh`](https://github.com/gliderlabs/ssh)) bound **only** to the tailnet listener.
 - **Auth is the tailnet itself:** if your ACL lets you reach the node, you're in — same model as Tailscale SSH. The SSH server does no separate password/key check by default.
 - Cross-platform PTY (Unix pty + Windows ConPTY) via [`go-pty`](https://github.com/aymanbagabas/go-pty), so full-screen TUIs, colors, and resize work.
+- File transfer (SFTP/scp) via a [`pkg/sftp`](https://github.com/pkg/sftp) subsystem on the same connection.
 
 Security does **not** rely on this code being secret — it rests on your Tailscale auth key + ACL. That's why this repo is safe to publish.
 
@@ -41,19 +42,30 @@ Security does **not** rely on this code being secret — it rests on your Tailsc
 
 > This ACL governs **this custom SSH server**. Tailscale's own `ssh` ACL block only applies to real Tailscale-SSH nodes — tailtap runs its own server, so the reachability rule above is what matters.
 
-Optionally require your own SSH public key *on top* of the tailnet check — see the commented `PublicKeyHandler` in [`sshserver.go`](./sshserver.go).
+Optionally require your own SSH public key *on top* of the tailnet check — see [Extra hardening](#extra-hardening-require-your-ssh-key-optional) below.
 
 ---
 
 ## Build
 
-You supply your own tailnet auth key; it is injected at build time and never stored in the repo.
+You supply your own tailnet auth key; it is injected at build time and never stored in the repo. Three ways to provide it:
 
 ```bash
-./build.sh tskey-auth-xxxxxxxxxxxx      # builds every target into dist/
-# or
-KEY=tskey-auth-xxxx ./build.sh
+./build.sh tskey-auth-xxxxxxxxxxxx                    # pass a key explicitly
+KEY=tskey-auth-xxxx ./build.sh                        # via env
+TS_CLIENT_ID=... TS_CLIENT_SECRET=... ./build.sh      # auto-mint a fresh key (see below)
 ```
+
+### Auto-minting keys with OAuth (optional)
+
+Instead of clicking a key out of the admin console each time, create a **Tailscale OAuth client** once (scope: *Keys → Auth Keys → Write*, allowed tag `tag:tailtap`) and let [`mint-key.sh`](./mint-key.sh) generate keys for you:
+
+```bash
+export TS_CLIENT_ID=...  TS_CLIENT_SECRET=...
+./build.sh                      # mints a fresh ephemeral, tagged key, then builds
+```
+
+By **default it mints a fresh key every build** — which fits the "revoke the key after each job" workflow, since one key maps to one job's binaries. If you'd rather cut down on key churn, set `TS_KEY_REUSE=1` and it caches the key under `~/.tailtap` and reuses it until it's within `TS_KEY_RENEW_BEFORE_DAYS` (default 7) of expiry, checking the live API each run so revocations are caught. Needs `curl` + `jq`. See the header of `mint-key.sh` for all tunables.
 
 Produces static, zero-dependency binaries (`CGO_ENABLED=0`, symbols stripped):
 
@@ -89,6 +101,17 @@ ssh you@job-gallery-1     # tailnet MagicDNS name — no password, no key prompt
 
 `tailtap` always launches an **interactive shell** (it ignores a command passed as `ssh host 'cmd'` — request a PTY). Point your automation at the hostname.
 
+### File transfer (SFTP / scp)
+
+The SSH server exposes an `sftp` subsystem, so file transfer works over the same tailnet connection — no extra setup:
+
+```bash
+sftp you@job-gallery-1                     # interactive
+scp ./patch.zip you@job-gallery-1:/tmp/    # push (OpenSSH 9+ runs scp over SFTP)
+```
+
+Files are read/written as whatever user launched `tailtap`, and — like the shell — SFTP does no auth beyond the tailnet.
+
 ---
 
 ## Flags
@@ -97,8 +120,34 @@ ssh you@job-gallery-1     # tailnet MagicDNS name — no password, no key prompt
 |------|---------|---------|
 | `-name` | `tailtap` | Hostname on the tailnet |
 | `-persist` | `false` | Reconnect as the same node across runs/reboots (non-ephemeral) |
+| `-forward` | `false` | Allow SSH port forwarding (`ssh -L` / `-R`) |
+| `-quiet` | `false` | Suppress tsnet + informational logs (errors still print) |
 
 You can also skip the baked-in key for local dev by setting `TS_AUTHKEY` in the environment.
+
+### Port forwarding (`-forward`)
+
+With `-forward`, you can tunnel through the node:
+
+```bash
+ssh -L 8080:localhost:80 you@job-gallery-1     # reach a venue-local web UI on your laptop:8080
+ssh -R 9000:localhost:9000 you@job-gallery-1   # expose a laptop service to the node
+```
+
+Off by default to keep the attack surface minimal (only you can reach the node anyway, per the ACL).
+
+### Extra hardening: require your SSH key (optional)
+
+By default, access is gated by the tailnet alone. To *also* require your SSH public key, provide it either baked in at build time or at runtime:
+
+```bash
+# baked in:
+go build -ldflags "-X main.authKey=$KEY -X 'main.authorizedKeys=$(cat ~/.ssh/id_ed25519.pub)'" -o tailtap .
+# or at runtime:
+TAILTAP_AUTHORIZED_KEYS="$(cat ~/.ssh/id_ed25519.pub)" ./tailtap -name job-gallery-1
+```
+
+Multiple keys: separate with newlines (authorized_keys format).
 
 ---
 
@@ -137,6 +186,18 @@ git clone https://github.com/egemenertugrul/tailtap
 cd tailtap
 go build .            # dev build; set TS_AUTHKEY at runtime instead of baking a key
 ```
+
+## Acknowledgements
+
+tailtap is a thin bit of glue over some excellent work:
+
+- **[Tailscale `tsnet`](https://pkg.go.dev/tailscale.com/tsnet)** — the userspace tailnet node that makes "no install, no daemon, no root" possible.
+- **[`gliderlabs/ssh`](https://github.com/gliderlabs/ssh)** — the friendly SSH server API.
+- **[`aymanbagabas/go-pty`](https://github.com/aymanbagabas/go-pty)** — cross-platform PTY, including Windows ConPTY.
+- **[`pkg/sftp`](https://github.com/pkg/sftp)** — the SFTP subsystem.
+- **[`golang.org/x/crypto/ssh`](https://pkg.go.dev/golang.org/x/crypto/ssh)** — host-key plumbing.
+
+Related prior art worth knowing: **[`ts-ssh`](https://github.com/derekg/ts-ssh)** (client-side tsnet SSH) and **[`rospo`](https://github.com/ferama/rospo)** (single-binary reverse-tunnel SSH, no Tailscale). tailtap differs by being the *agent* side — it joins your tailnet itself and serves a shell — rather than a client or a classic reverse tunnel.
 
 ## License
 

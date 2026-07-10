@@ -18,7 +18,15 @@ var authKey string
 func main() {
 	name := flag.String("name", "tailtap", "hostname on the tailnet")
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
+	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
+	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
 	flag.Parse()
+
+	infof := func(format string, args ...any) {
+		if !*quiet {
+			log.Printf(format, args...)
+		}
+	}
 
 	if authKey == "" {
 		authKey = os.Getenv("TS_AUTHKEY") // fallback for local dev
@@ -48,7 +56,11 @@ func main() {
 		AuthKey:   authKey,
 		Ephemeral: !*persist, // ephemeral nodes auto-deregister when they go offline
 		Dir:       stateDir,
-		// Logf: func(string, ...any) {}, // uncomment to silence tsnet's console noise
+	}
+	if *quiet {
+		noop := func(string, ...any) {}
+		s.Logf = noop
+		s.UserLogf = noop
 	}
 	defer s.Close()
 
@@ -59,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("tailscale up failed: %v", err)
 	}
-	log.Printf("online as %q  ip=%v", *name, st.TailscaleIPs)
+	infof("online as %q  ip=%v", *name, st.TailscaleIPs)
 
 	// SECURITY: this listener accepts ONLY tailnet connections.
 	// It MUST be s.Listen (tsnet), never net.Listen on 0.0.0.0.
@@ -68,7 +80,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	srv := newSSHServer(stateDir)
-	log.Printf("ssh server listening on tailnet:22")
+	srv := newSSHServer(stateDir, *forward)
+	infof("ssh server listening on tailnet:22")
 	log.Fatal(srv.Serve(ln))
 }

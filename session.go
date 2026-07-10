@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,37 +18,50 @@ import (
 	pty "github.com/aymanbagabas/go-pty"
 )
 
+// sessionHandler runs either an interactive shell (no command given) or the
+// requested command (e.g. `ssh host 'cmd'`, or the bootstrap commands tools
+// like VS Code Remote-SSH send). It works with or without a PTY.
 func sessionHandler(s ssh.Session) {
 	ptyReq, winCh, isPty := s.Pty()
-	if !isPty {
-		io.WriteString(s, "interactive shell only (request a pty)\n")
-		_ = s.Exit(1)
-		return
+
+	// Pick what to run: an explicit command via the login shell, or the shell
+	// itself for an interactive session.
+	var name string
+	var args []string
+	if raw := s.RawCommand(); raw != "" {
+		name, args = shellCommand(raw)
+	} else {
+		name, args = defaultShell()
 	}
 
-	shell, args := defaultShell()
+	if isPty {
+		runPTY(s, ptyReq, winCh, name, args)
+	} else {
+		runPlain(s, name, args)
+	}
+}
 
+// runPTY runs the process attached to a pseudo-terminal (interactive use).
+func runPTY(s ssh.Session, ptyReq ssh.Pty, winCh <-chan ssh.Window, name string, args []string) {
 	p, err := pty.New()
 	if err != nil {
 		log.Printf("pty: %v", err)
 		_ = s.Exit(1)
 		return
 	}
-	// Close the PTY exactly once, on any exit path. conPty.Close is not
-	// idempotent, so guard it.
+	// conPty.Close is not idempotent, so guard it.
 	var closeOnce sync.Once
 	closePTY := func() { closeOnce.Do(func() { _ = p.Close() }) }
 	defer closePTY()
 
-	c := p.Command(shell, args...)
-	c.Env = append(os.Environ(), "TERM="+ptyReq.Term)
+	c := p.Command(name, args...)
+	c.Env = append(sessionEnv(s), "TERM="+ptyReq.Term)
 	if err := c.Start(); err != nil {
-		log.Printf("start shell: %v", err)
+		log.Printf("start: %v", err)
 		_ = s.Exit(1)
 		return
 	}
 
-	// Initial size + ongoing resizes.
 	_ = p.Resize(ptyReq.Window.Width, ptyReq.Window.Height)
 	go func() {
 		for win := range winCh {
@@ -54,13 +69,11 @@ func sessionHandler(s ssh.Session) {
 		}
 	}()
 
-	// client -> shell
-	go func() { _, _ = io.Copy(p, s) }()
+	go func() { _, _ = io.Copy(p, s) }() // client -> shell
 
-	// shell -> client, in the background. On Windows ConPTY the output pipe does
-	// NOT reach EOF when the shell exits, so a foreground copy here would block
-	// forever and the client's session would hang after typing `exit`. Instead we
-	// wait for the process, then close the PTY to unblock this copy.
+	// shell -> client in the background. On Windows ConPTY the output pipe does
+	// not reach EOF when the process exits, so a foreground copy would hang the
+	// client after `exit`. We wait for the process, then close the PTY.
 	copied := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(s, p)
@@ -68,19 +81,62 @@ func sessionHandler(s ssh.Session) {
 	}()
 
 	waitErr := c.Wait()
-	closePTY() // unblocks the shell -> client copy above
-
-	// Let any final output drain, but never hang.
+	closePTY()
 	select {
 	case <-copied:
 	case <-time.After(2 * time.Second):
 	}
-
-	_ = s.Exit(exitStatus(c, waitErr))
+	_ = s.Exit(ptyExitStatus(c, waitErr))
 }
 
-// exitStatus returns the shell's exit code to report back to the SSH client.
-func exitStatus(c *pty.Cmd, waitErr error) int {
+// runPlain runs the process with plain pipes, no PTY. This is what
+// non-interactive clients (scp's peer, VS Code Remote-SSH bootstrap, and
+// `ssh host 'cmd'`) use.
+func runPlain(s ssh.Session, name string, args []string) {
+	c := exec.Command(name, args...)
+	c.Env = sessionEnv(s)
+	c.Stdout = s
+	c.Stderr = s.Stderr()
+	stdin, err := c.StdinPipe()
+	if err != nil {
+		log.Printf("stdin: %v", err)
+		_ = s.Exit(1)
+		return
+	}
+	if err := c.Start(); err != nil {
+		log.Printf("start: %v", err)
+		_ = s.Exit(1)
+		return
+	}
+	go func() {
+		_, _ = io.Copy(stdin, s)
+		_ = stdin.Close()
+	}()
+	_ = s.Exit(execExitStatus(c.Wait()))
+}
+
+// sessionEnv is the child environment: the agent's own environment plus any
+// variables the client requested (SetEnv). The tailnet already authorized the
+// peer, so we do not filter these.
+func sessionEnv(s ssh.Session) []string {
+	return append(os.Environ(), s.Environ()...)
+}
+
+// shellCommand wraps a raw command string so the login shell runs it, matching
+// how OpenSSH executes `ssh host 'cmd'`.
+func shellCommand(raw string) (string, []string) {
+	sh, _ := defaultShell()
+	if runtime.GOOS == "windows" {
+		base := strings.ToLower(filepath.Base(sh))
+		if strings.HasPrefix(base, "pwsh") || strings.HasPrefix(base, "powershell") {
+			return sh, []string{"-Command", raw}
+		}
+		return sh, []string{"/c", raw}
+	}
+	return sh, []string{"-c", raw}
+}
+
+func ptyExitStatus(c *pty.Cmd, waitErr error) int {
 	if c.ProcessState != nil {
 		return c.ProcessState.ExitCode()
 	}
@@ -88,6 +144,16 @@ func exitStatus(c *pty.Cmd, waitErr error) int {
 		return 1
 	}
 	return 0
+}
+
+func execExitStatus(waitErr error) int {
+	if waitErr == nil {
+		return 0
+	}
+	if ee, ok := waitErr.(*exec.ExitError); ok {
+		return ee.ExitCode()
+	}
+	return 1
 }
 
 func defaultShell() (string, []string) {

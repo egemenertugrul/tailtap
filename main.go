@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,12 +16,21 @@ import (
 // MUST be a var, not a const — ldflags -X only patches package-level vars.
 var authKey string
 
+// Set by the release build via -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 func main() {
 	name := flag.String("name", "tailtap", "hostname on the tailnet")
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
 	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("tailtap", version)
+		return
+	}
 
 	infof := func(format string, args ...any) {
 		if !*quiet {

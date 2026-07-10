@@ -1,0 +1,65 @@
+name: Release
+
+# Build KEYLESS binaries and publish them to a GitHub Release on a version tag.
+# Keyless = no auth key baked in, so nothing secret is in the artifacts and CI
+# never touches a credential. Users supply a key at runtime via TS_AUTHKEY, or
+# rebuild with their own baked key via build.sh (see README).
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # needed to create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build keyless binaries
+        env:
+          CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eux
+          mkdir -p dist
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          build() { GOOS="$1" GOARCH="$2" go build -ldflags "$LDFLAGS" -o "dist/$3" .; }
+          build linux   amd64 tailtap-linux-amd64
+          build linux   arm64 tailtap-linux-arm64
+          build windows amd64 tailtap-windows-amd64.exe
+          build darwin  arm64 tailtap-macos-arm64
+          build darwin  amd64 tailtap-macos-amd64
+          ( cd dist && sha256sum * > SHA256SUMS )
+          ls -la dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/notes.md <<'EOF'
+          **Keyless binaries** — no auth key is baked in. Run one of two ways:
+
+          ```bash
+          # supply a key at runtime:
+          TS_AUTHKEY=tskey-auth-xxxx ./tailtap-linux-amd64 -name job-1
+
+          # or rebuild with your own key baked in (for the double-click flow):
+          ./build.sh tskey-auth-xxxx
+          ```
+
+          Verify downloads against `SHA256SUMS`. See the README for setup, the security model, and the required Tailscale ACL.
+          EOF
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "tailtap ${GITHUB_REF_NAME}" \
+            --notes-file /tmp/notes.md

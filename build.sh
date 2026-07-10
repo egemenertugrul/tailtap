@@ -36,6 +36,12 @@ if [[ -n "${NAME:-}" ]]; then
   LDFLAGS="$LDFLAGS -X main.defaultName=$NAME"
 fi
 
+# Optional: bake in flags so the binary needs no arguments when run.
+#   FLAGS="-vscode -persist" ./build.sh <key>
+if [[ -n "${FLAGS:-}" ]]; then
+  LDFLAGS="$LDFLAGS -X 'main.bakedFlags=$FLAGS'"
+fi
+
 build() { # os arch out
   echo ">> $1/$2"
   CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -ldflags "$LDFLAGS" -o "dist/$3" .

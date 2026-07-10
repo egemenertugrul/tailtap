@@ -102,9 +102,12 @@ You can also require your own SSH key on top of the tailnet check — see [Flags
 Bring your own auth key. It's injected at build time and never stored in the repo.
 
 ```bash
-./build.sh tskey-auth-xxxx               # or: KEY=tskey-auth-xxxx ./build.sh
-NAME=booth ./build.sh tskey-auth-xxxx    # bake a default hostname; -name still overrides
+./build.sh tskey-auth-xxxx                           # or: KEY=tskey-auth-xxxx ./build.sh
+NAME=booth ./build.sh tskey-auth-xxxx                # bake a default hostname
+FLAGS="-vscode -persist" ./build.sh tskey-auth-xxxx  # bake in flags so it needs no arguments
 ```
+
+Baked-in flags run automatically at startup, so someone can just double-click the exe with nothing to type. Anything passed on the command line still overrides them. You can combine `NAME` and `FLAGS`. Baked flag values cannot contain spaces.
 
 Output is static and dependency-free (`CGO_ENABLED=0`, stripped):
 

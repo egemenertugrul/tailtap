@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,11 @@ var version = "dev"
 // -ldflags "-X main.defaultName=booth"; -name at runtime still overrides it.
 var defaultName = "tailtap"
 
+// Flags applied automatically at startup, baked in at build time via
+// -ldflags "-X 'main.bakedFlags=-vscode -persist'". Anything typed on the
+// command line overrides them. Values cannot contain spaces.
+var bakedFlags string
+
 func main() {
 	name := flag.String("name", defaultName, "hostname on the tailnet")
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
@@ -34,7 +40,13 @@ func main() {
 	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
 	vscode := flag.Bool("vscode", false, "tune for VS Code Remote-SSH: enables -forward and runs as sshd.exe (Windows)")
 	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.Parse()
+
+	// Baked-in flags come first so anything on the real command line overrides them.
+	args := os.Args[1:]
+	if bakedFlags != "" {
+		args = append(strings.Fields(bakedFlags), args...)
+	}
+	flag.CommandLine.Parse(args)
 
 	if *showVersion {
 		fmt.Println("tailtap", version)

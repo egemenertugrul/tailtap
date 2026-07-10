@@ -24,6 +24,19 @@ No ports are opened on the local network. The target needs no Tailscale install,
 
 ---
 
+## Features
+
+- One self-contained binary. Nothing to install on the target, no admin or root.
+- Joins your Tailscale network and serves its own SSH server, bound only to the tailnet.
+- Interactive shell, plus SFTP and scp file transfer over the same connection.
+- Optional port forwarding, and VS Code Remote-SSH support.
+- Windows, Linux, and macOS. Static build, no dependencies.
+- Ephemeral by default, so it leaves nothing behind. `-persist` keeps a stable identity.
+- Access is controlled by your tailnet and ACL, not passwords or keys on the target.
+- Bake the key, hostname, and flags at build time so it runs with a double-click.
+
+---
+
 ## Connect
 
 Run it on the target, then from your laptop:

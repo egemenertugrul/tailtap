@@ -1,10 +1,10 @@
 # tailtap
 
-**One small binary that gives you an SSH shell into any machine over your private Tailscale network. No install, no login on the target, no SSH keys to swap.**
+**Drop one binary on any machine and SSH into it over your Tailscale network. Nothing to install on the target, no login there, no keys to copy.**
 
-Copy `tailtap` to a Windows, Linux, or macOS machine and run it. It joins your tailnet and opens an interactive shell. You connect from your own laptop by hostname, with no password and no key prompt. Kill it and the machine disappears from your network.
+Run it on a Windows, Linux, or macOS machine. It joins your tailnet and serves a shell. You connect from your laptop by name. Kill it and the machine drops off your network.
 
-It is built for one job: walk up to a machine at a venue, lab, or client site, get remote access for the length of a job, and leave nothing behind. It also works well as a target for automation like Claude Code.
+It's for one thing: get into a machine at a venue, lab, or client site for the length of a job, then leave nothing behind. Works well as an automation target too.
 
 ```
      your laptop                          the target machine
@@ -20,73 +20,65 @@ It is built for one job: walk up to a machine at a venue, lab, or client site, g
                               and disappears again when it stops
 ```
 
-The only thing crossing the network is the Tailscale connection. tailtap opens no ports on the local network, and the target needs no Tailscale install, no admin rights, and no inbound firewall changes.
+No ports are opened on the local network. The target needs no Tailscale install, no admin rights, and no firewall changes.
 
 ---
 
 ## Connect
 
-Run the binary on the target machine, then from your own laptop just:
+Run it on the target, then from your laptop:
 
 ```bash
 ssh nevaremote
 ```
 
-That is the whole thing. No password, no key prompt. `nevaremote` is the name the binary was given (with `-name`, or baked in at build time). A few more examples:
+No password, no key prompt. The name is whatever you passed to `-name` (or baked in at build time).
 
 ```bash
-ssh booth              # a machine started as: tailtap -name booth
-ssh lab-01             # a machine started as: tailtap -name lab-01
-ssh tailtap            # the default name, if none was set
-ssh 100.101.102.103    # or the tailnet IP the binary printed on startup
+ssh booth              # started as: tailtap -name booth
+ssh 100.101.102.103    # or the tailnet IP it printed on startup
 ```
 
-You do not type a username or a password. The tailnet decides who is allowed in, and the shell runs as whoever launched the binary on the target. (If you like, `ssh user@nevaremote` also works; the user part is ignored.)
-
-Transferring files works the same way, over the same connection:
+The username doesn't matter — the tailnet decides who gets in, and the shell runs as whoever started the binary. Files go over the same connection:
 
 ```bash
-scp report.pdf nevaremote:/tmp/     # send a file
-scp nevaremote:/tmp/out.log .       # get a file
-sftp nevaremote                     # interactive file browser
+scp report.pdf nevaremote:/tmp/
+sftp nevaremote
 ```
 
-> If `ssh nevaremote` cannot find the host, MagicDNS is probably off on your laptop, or the name is wrong. Use the tailnet IP the binary printed instead, or check the name in your Tailscale device list.
+If the name won't resolve, MagicDNS is probably off on your laptop — use the IP instead.
 
 ---
 
 ## How it works
 
-- It embeds a Tailscale node using [`tsnet`](https://pkg.go.dev/tailscale.com/tsnet). This is userspace networking, so it needs no admin or root and never touches the machine's real port 22.
-- It logs in with a pre-authorized, ephemeral auth key that is baked into the binary at build time.
-- It runs an SSH server (via [`gliderlabs/ssh`](https://github.com/gliderlabs/ssh)) that listens only on the tailnet, never on the local network.
-- The tailnet itself is the login. If your ACL lets you reach the node, you are in. By default the SSH server does no extra password or key check.
-- It uses a cross-platform PTY (Unix pty plus Windows ConPTY) via [`go-pty`](https://github.com/aymanbagabas/go-pty), so full-screen apps, colors, and resizing all work.
-- It supports file transfer (SFTP and scp) through a [`pkg/sftp`](https://github.com/pkg/sftp) subsystem on the same connection.
+- Embeds a Tailscale node with [`tsnet`](https://pkg.go.dev/tailscale.com/tsnet) — userspace, so no admin or root, and it never touches the machine's real port 22.
+- Authenticates with an ephemeral auth key baked into the binary at build time.
+- Runs its own SSH server ([`gliderlabs/ssh`](https://github.com/gliderlabs/ssh)) bound only to the tailnet.
+- The tailnet is the login: if your ACL lets you reach the node, you're in. No separate password or key by default.
+- Cross-platform PTY ([`go-pty`](https://github.com/aymanbagabas/go-pty)) so full-screen apps, colors, and resize work. SFTP and scp too.
 
-Safety does not depend on the code being secret. It depends on your Tailscale auth key and ACL. That is why this repo is safe to make public.
+Nothing here relies on the code being secret — safety is your auth key and ACL. That's why it's fine to make public.
 
 ---
 
 ## Where it fits
 
-Reaching a machine over Tailscale has two halves: a **client** you connect *from*, and a **server** you connect *to*.
+There are two halves to reaching a machine over Tailscale: the **client** you connect from, and the **server** you connect to.
 
-tailtap is the **server** half. You run it on the machine you want to reach, and it turns that machine into an SSH target that is already on your tailnet, with nothing to install.
+tailtap is the server. You run it on the machine you want to reach. A tool like [`ts-ssh`](https://github.com/derekg/ts-ssh) is a client — it connects to machines that already run a server. Use plain `ssh` or ts-ssh to reach a tailtap node.
 
-Tools like [`ts-ssh`](https://github.com/derekg/ts-ssh) are the **client** half: they connect out to machines that already run an SSH server. They pair up well. You can use plain `ssh`, or a client like ts-ssh, to reach a machine running tailtap.
-
-So tailtap is useful when the machine you want to reach has no SSH server and no Tailscale set up yet, and you want to change that in one step, then undo it cleanly.
+Reach for tailtap when a machine has no SSH server and no Tailscale yet, and you want to fix that in one step and undo it cleanly.
 
 ---
 
-## Security model (read this before using)
+## Security
 
-`tailtap` is a tool for reaching machines you control. Its safety comes entirely from how you set up the key and the ACL:
+Safety is all in how you make the key and the ACL:
 
-1. **The auth key must be ephemeral, expiring, and tagged.** Create it with these options: Reusable, Ephemeral, Pre-authorized, Tag `tag:tailtap`, and a short expiry.
-2. **The key is a secret once it is baked in.** Every binary in `dist/` contains a live key, so treat each copy like a password. Delete it off the target when the job is done, then revoke or rotate the key.
-3. **Fence it in with an ACL** so a tailtap node can be reached only by you and can reach nothing else:
+1. Make the auth key **ephemeral, expiring, and tagged** — Reusable, Ephemeral, Pre-authorized, tag `tag:tailtap`, short expiry.
+2. The key lives inside every binary in `dist/`. Treat those like passwords: delete them off the target after the job, then revoke the key.
+3. Fence the node in so only you can reach it and it can reach nothing else:
 
 ```jsonc
 {
@@ -94,45 +86,27 @@ So tailtap is useful when the machine you want to reach has no SSH server and no
   "acls": [
     // you can reach tailtap nodes on the SSH port
     { "action": "accept", "src": ["you@example.com"], "dst": ["tag:tailtap:22"] }
-    // no rule giving tag:tailtap any outbound access means it cannot touch the rest of your tailnet
+    // nothing grants tag:tailtap outbound access, so it can't touch the rest of your tailnet
   ]
 }
 ```
 
-Note: this ACL controls tailtap's own SSH server. Tailscale's built-in `ssh` ACL block only applies to real Tailscale-SSH nodes, and tailtap runs its own server, so the reachability rule above is the one that matters.
+This ACL governs tailtap's own SSH server. Tailscale's built-in `ssh` ACL block doesn't apply here.
 
-You can also require your own SSH public key on top of the tailnet check. See [Extra hardening](#extra-hardening-require-your-ssh-key-optional) below.
+You can also require your own SSH key on top of the tailnet check — see [Flags](#flags).
 
 ---
 
 ## Build
 
-You supply your own tailnet auth key. It is injected at build time and never stored in the repo. There are three ways to provide it:
+Bring your own auth key. It's injected at build time and never stored in the repo.
 
 ```bash
-./build.sh tskey-auth-xxxxxxxxxxxx                    # pass a key directly
-KEY=tskey-auth-xxxx ./build.sh                        # pass it through the environment
-TS_CLIENT_ID=... TS_CLIENT_SECRET=... ./build.sh      # auto-create a fresh key (see below)
+./build.sh tskey-auth-xxxx               # or: KEY=tskey-auth-xxxx ./build.sh
+NAME=booth ./build.sh tskey-auth-xxxx    # bake a default hostname; -name still overrides
 ```
 
-To bake a default hostname into the binary so it needs no `-name` at runtime, set `NAME`:
-
-```bash
-NAME=booth ./build.sh tskey-auth-xxxx    # binary defaults to hostname "booth"; -name still overrides
-```
-
-### Auto-creating keys with OAuth (optional)
-
-Instead of clicking a key out of the admin console every time, create a Tailscale OAuth client once (scope: Keys, Auth Keys, Write; allowed tag `tag:tailtap`) and let [`mint-key.sh`](./mint-key.sh) create keys for you:
-
-```bash
-export TS_CLIENT_ID=...  TS_CLIENT_SECRET=...
-./build.sh                      # creates a fresh ephemeral, tagged key, then builds
-```
-
-By default it creates a fresh key on every build. This fits the "revoke the key after each job" workflow, because one key maps to one job's binaries. If you would rather reduce the number of keys, set `TS_KEY_REUSE=1`. It then caches the key under `~/.tailtap` and reuses it until it is within `TS_KEY_RENEW_BEFORE_DAYS` (default 7) of expiry, checking the live API each run so revocations are noticed. This needs `curl` and `jq`. See the header of `mint-key.sh` for all the settings.
-
-The build produces static, dependency-free binaries (`CGO_ENABLED=0`, symbols stripped):
+Output is static and dependency-free (`CGO_ENABLED=0`, stripped):
 
 | File | Runs on |
 |------|--------|
@@ -142,26 +116,41 @@ The build produces static, dependency-free binaries (`CGO_ENABLED=0`, symbols st
 | `tailtap-macos-arm64`        | Apple Silicon Mac |
 | `tailtap-macos-amd64`        | Intel Mac |
 
-Never commit `dist/`. It is gitignored because every binary carries a live key.
+Don't commit `dist/` — every binary carries a live key. It's gitignored.
+
+### Minting keys automatically (optional)
+
+Set up a Tailscale OAuth client once (scope: Auth Keys write, tag `tag:tailtap`) and let [`mint-key.sh`](./mint-key.sh) create keys:
+
+```bash
+export TS_CLIENT_ID=... TS_CLIENT_SECRET=...
+./build.sh
+```
+
+It mints a fresh key per build by default, which matches the "revoke after each job" habit. Set `TS_KEY_REUSE=1` to cache one under `~/.tailtap` and reuse it until it nears expiry. Needs `curl` and `jq`; see the script header for the rest.
 
 ---
 
-## Deploy and run on the target
+## Run it
 
-1. Copy the matching binary to the machine (a USB stick is most reliable at a venue, or a download link if it has internet).
-2. Run it. No admin or root is needed:
+1. Copy the right binary over (a USB stick is most reliable at a venue).
+2. Run it — no admin needed:
    - **Linux and macOS:** `./tailtap-linux-amd64 -name booth`
-   - **Windows:** double-click it, or run `.\tailtap-windows-amd64.exe -name booth`. On the SmartScreen "unknown publisher" prompt, click More info, then Run anyway. The binary is unsigned.
-   - **macOS Gatekeeper:** right-click and choose Open the first time, or run `xattr -d com.apple.quarantine ./tailtap-macos-arm64`.
-3. The machine shows up in your Tailscale device list under `-name`, tagged `tag:tailtap`. Then connect with `ssh booth` (see [Connect](#connect)).
+   - **Windows:** double-click, or `.\tailtap-windows-amd64.exe -name booth`. It's unsigned, so SmartScreen warns — More info → Run anyway.
+   - **macOS:** first run, right-click → Open (or `xattr -d com.apple.quarantine ./tailtap-macos-arm64`).
+3. It shows up in your device list under `-name`, tagged `tag:tailtap`. Connect with `ssh booth`.
 
-Give each machine a unique `-name`; reusing one makes Tailscale append a number (`booth-1`). Add `-persist` to reconnect as the same node across reboots. Without it the node is ephemeral and removes itself when it goes offline.
+Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add `-persist` to keep the same identity across reboots — otherwise it's ephemeral and vanishes when it stops.
 
-## Files and remote editing
+---
 
-The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same connection with no extra setup: `scp`, `sftp`, `rsync` over SSH, and editor SFTP extensions (for example the "SFTP" extension in VS Code) for editing remote files. Files are read and written as whoever launched the binary; like the shell, SFTP does no check beyond the tailnet.
+## Files and editors
 
-tailtap also runs one-off commands, not just an interactive shell (`ssh booth 'whoami'`), and supports non-interactive (no-PTY) sessions. That is what tools like VS Code **Remote-SSH** need to bootstrap, so Remote-SSH can work. This is **experimental**; some of its features may also need `-forward` (port forwarding), and Windows targets are less reliable than Linux or macOS.
+SFTP is always on, over the same connection — so `scp`, `sftp`, `rsync` over SSH, and VS Code SFTP extensions work with no setup. Files are read and written as whoever started the binary.
+
+It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental: it usually needs `-forward`, and Windows targets are flakier than Linux or macOS.
+
+An ephemeral node gets a new host key each run, so reconnecting to the same name trips SSH's "host key changed" check (VS Code then disables port forwarding). Run with `-persist` for a stable host key, or clear the old entry with `ssh-keygen -R <name>` between runs.
 
 ---
 
@@ -170,102 +159,71 @@ tailtap also runs one-off commands, not just an interactive shell (`ssh booth 'w
 | Flag | Default | What it does |
 |------|---------|------|
 | `-name` | `tailtap` | Hostname on the tailnet |
-| `-persist` | `false` | Reconnect as the same node across runs and reboots (not ephemeral) |
-| `-forward` | `false` | Allow SSH port forwarding (`ssh -L` and `-R`) |
-| `-quiet` | `false` | Hide tsnet and status logs (errors still print) |
-| `-cleanup` | `false` | **Deprecated / experimental.** Delete the binary when done. Unreliable on Windows (see below) |
-| `-minimize` | `false` | Minimize the console window on start (Windows only) |
+| `-persist` | `false` | Keep the same identity across reboots (not ephemeral) |
+| `-forward` | `false` | Allow port forwarding (`ssh -L` and `-R`) |
+| `-quiet` | `false` | Hide status logs (errors still print) |
+| `-cleanup` | `false` | **Deprecated.** Auto-delete the binary; unreliable on Windows |
+| `-minimize` | `false` | Minimize the console window (Windows only) |
 | `-version` | | Print the version and exit |
 
-For local development you can skip the baked-in key and set `TS_AUTHKEY` in the environment instead.
+For local dev you can skip the baked key and set `TS_AUTHKEY` in the environment.
 
 ### Port forwarding (`-forward`)
 
-With `-forward` you can tunnel a TCP port through the node. Two directions:
-
-- **`-L` (local):** pull a service the node can reach onto your laptop.
-- **`-R` (remote):** push a service on your laptop onto the node.
+Off by default. Turn it on to tunnel a port:
 
 ```bash
-ssh -L 8080:localhost:80 booth     # -L: a web page on the node shows up at localhost:8080 on your laptop
-ssh -R 9000:localhost:9000 booth   # -R: a service on your laptop's :9000 shows up on the node
+ssh -L 8080:localhost:80 booth     # pull a service the node can reach onto your laptop
+ssh -R 9000:localhost:9000 booth   # push a service on your laptop onto the node
 ```
 
-It is off by default to keep the surface small. Only you can reach the node anyway, because of the ACL.
+### Require your SSH key (optional)
 
-### Extra hardening: require your SSH key (optional)
-
-By default, access is gated by the tailnet alone. To also require your SSH public key, provide it either baked in at build time or at runtime:
+Add your public key on top of the tailnet check:
 
 ```bash
-# baked in:
-go build -ldflags "-X main.authKey=$KEY -X 'main.authorizedKeys=$(cat ~/.ssh/id_ed25519.pub)'" -o tailtap .
-# or at runtime:
-TAILTAP_AUTHORIZED_KEYS="$(cat ~/.ssh/id_ed25519.pub)" ./tailtap -name job-gallery-1
+TAILTAP_AUTHORIZED_KEYS="$(cat ~/.ssh/id_ed25519.pub)" ./tailtap -name booth
+# or bake it in: go build -ldflags "-X main.authKey=$KEY -X 'main.authorizedKeys=ssh-ed25519 AAAA... you@laptop'" .
 ```
 
-For more than one key, separate them with newlines (the authorized_keys format).
+Multiple keys: one per line.
 
 ---
 
 ## Cleaning up
 
-- Kill the process. An ephemeral node removes itself from your tailnet within a few minutes.
-- Delete the binary off the target. It carries a live key.
-- Revoke or rotate the auth key after the job.
+- Kill the process — an ephemeral node drops off your tailnet in a few minutes.
+- Delete the binary off the target; it carries a live key.
+- Revoke the key.
 
-### Deleting the binary automatically (`-cleanup`)
-
-> **Deprecated / experimental.** The Windows path is currently unreliable, so `-cleanup` is not recommended yet. For a guaranteed no-trace run, use the USB-stick approach below instead. This flag will be reworked later.
-
-`-cleanup` makes tailtap remove its own binary so nothing is left on disk:
-
-- **Linux and macOS:** the file is unlinked the moment it starts. The process keeps running from memory, so even a hard power-off leaves nothing behind.
-- **Windows:** a running `.exe` is locked, so the file is deleted when the process exits normally (Ctrl-C, or closing the console window). If it is hard-killed from Task Manager, the file stays and you delete it by hand.
-
-The simplest zero-trace option needs no flag at all: run the binary straight from a USB stick and pull the stick when you are done.
+The `-cleanup` flag (auto-delete the binary) is **deprecated** for now — it's unreliable on Windows. Simplest no-trace option: run from a USB stick and pull it out when you're done.
 
 ---
 
-## Design notes: why a custom SSH server?
+## Why a custom SSH server?
 
-Tailscale has its own built-in SSH, and you can turn it on inside this kind of binary with one import (`tsnet`'s `ListenSSH`). tailtap deliberately does not use it. Here is the plain reason.
+Tailscale ships its own SSH, and `tsnet` can expose it with one import. tailtap doesn't use it, on purpose:
 
-**What tailtap does:** it runs its own small SSH server, and when you connect it opens a normal shell as whoever started the binary. The rule for who gets in is simple: if you can reach the machine over the tailnet, you are in. One thing to check: can you reach it.
+- Tailscale SSH needs a separate SSH policy in the admin console and maps you to a real local user. More to set up, and easy to lock yourself out.
+- It doesn't run on Windows at all.
 
-**What Tailscale's built-in SSH would do instead:**
-
-- **It needs a heavier permission setup.** It ignores the simple "can you reach it" rule and needs a separate SSH policy block in your Tailscale admin console. Forget to add it and you get locked out instead of let in.
-- **It has to pick a real user account** on the target machine and match it to a policy entry. On a random machine you just walked up to, "log in as which user?" becomes a question you have to answer first.
-- **It does not work on Windows at all.** Tailscale's SSH server is Linux and Mac only. So using it would not replace tailtap's code. It would mean running Tailscale's SSH on Linux and Mac and keeping the custom server for Windows. That is two systems instead of one.
-
-**So the trade is this:** the built-in option is slightly less code, and only on Linux, in exchange for a more complicated permission setup, a "which user?" question on every machine, and a split between Windows and everything else.
-
-For tailtap's job, which is to drop one identical binary on any machine, get a shell, and leave nothing behind, the custom server wins. It is one code path for every platform and one simple rule for access. Tailscale's built-in SSH is the better choice for a different job: normal servers you own, with real user accounts, where you want per-person, audited logins. That is not this.
+Using it would mean two systems — Tailscale SSH on Linux and Mac, a custom one on Windows — and a fussier setup. One small server that acts the same everywhere fits this job better. If you run normal servers with real accounts and want audited per-user logins, Tailscale SSH is the better pick. That's a different job.
 
 ---
 
-## Building from source
+## Build from source
 
-Requires Go 1.24 or newer. No CGO.
+Go 1.24 or newer, no CGO.
 
 ```bash
 git clone https://github.com/egemenertugrul/tailtap
 cd tailtap
-go build .            # dev build; set TS_AUTHKEY at runtime instead of baking a key
+go build .    # dev build; set TS_AUTHKEY at runtime instead of baking a key
 ```
 
-## Acknowledgements
+## Built on
 
-tailtap is a thin layer of glue over some excellent work:
-
-- [Tailscale `tsnet`](https://pkg.go.dev/tailscale.com/tsnet): the userspace tailnet node that makes "no install, no daemon, no root" possible.
-- [`gliderlabs/ssh`](https://github.com/gliderlabs/ssh): the friendly SSH server API.
-- [`aymanbagabas/go-pty`](https://github.com/aymanbagabas/go-pty): cross-platform PTY, including Windows ConPTY.
-- [`pkg/sftp`](https://github.com/pkg/sftp): the SFTP subsystem.
-- [`golang.org/x/crypto/ssh`](https://pkg.go.dev/golang.org/x/crypto/ssh): host-key plumbing.
-
-See [Where it fits](#where-it-fits) for how tailtap relates to client tools like [`ts-ssh`](https://github.com/derekg/ts-ssh).
+[`tsnet`](https://pkg.go.dev/tailscale.com/tsnet), [`gliderlabs/ssh`](https://github.com/gliderlabs/ssh), [`go-pty`](https://github.com/aymanbagabas/go-pty), [`pkg/sftp`](https://github.com/pkg/sftp), and [`x/crypto/ssh`](https://pkg.go.dev/golang.org/x/crypto/ssh).
 
 ## License
 

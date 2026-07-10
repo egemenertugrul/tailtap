@@ -222,7 +222,7 @@ Multiple keys: one per line.
 
 ## Cleaning up
 
-- Kill the process. An ephemeral node drops off your tailnet in a few minutes.
+- Kill the process. The node goes offline right away, and Tailscale auto-removes an ephemeral node from the list a bit later (normally 30 to 60 minutes). To free the name sooner, delete it in the admin console.
 - Delete the binary off the target; it carries a live key.
 - Revoke the key.
 

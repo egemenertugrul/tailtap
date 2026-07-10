@@ -1,0 +1,11 @@
+# Binaries carry a live auth key baked via ldflags — NEVER commit them.
+/dist/
+tailtap
+tailtap-*
+*.exe
+
+# Local Go build artifacts
+/vendor/
+
+# Editor / OS cruft
+.DS_Store

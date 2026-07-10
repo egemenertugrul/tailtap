@@ -1,0 +1,48 @@
+name: CI
+
+# Build-verification only. This is a PUBLIC repo, so CI never handles a real
+# auth key — it compiles every target with an empty key to keep builds green.
+# Keyed release binaries are built locally via ./build.sh and never published.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: vet + cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: cross-compile all targets (no key baked)
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -eux
+          go build -o /dev/null .                                   # host
+          GOOS=linux   GOARCH=amd64 go build -o /dev/null .
+          GOOS=linux   GOARCH=arm64 go build -o /dev/null .
+          GOOS=windows GOARCH=amd64 go build -o /dev/null .
+          GOOS=darwin  GOARCH=arm64 go build -o /dev/null .
+          GOOS=darwin  GOARCH=amd64 go build -o /dev/null .

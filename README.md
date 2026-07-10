@@ -138,7 +138,9 @@ Without `-name`, nodes get the default `tailtap`, and a second one becomes `tail
 
 ### File transfer (SFTP and scp)
 
-The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same tailnet connection with no extra setup: `sftp`, `scp`, `rsync` over SSH, and editor remote-file tools like VS Code (Remote-SSH or an SFTP extension).
+The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same tailnet connection with no extra setup: `sftp`, `scp`, `rsync` over SSH, and editor SFTP extensions (for example the "SFTP" extension in VS Code) for editing remote files.
+
+Note: VS Code **Remote-SSH** (the full remote workspace) does **not** work. It needs to run bootstrap commands non-interactively, and tailtap only opens an interactive shell and ignores commands passed as `ssh host 'cmd'`. Use an SFTP extension for remote file editing instead.
 
 ```bash
 sftp you@job-gallery-1                     # interactive, by name

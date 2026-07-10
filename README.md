@@ -148,9 +148,11 @@ Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add 
 
 SFTP is always on, over the same connection — so `scp`, `sftp`, `rsync` over SSH, and VS Code SFTP extensions work with no setup. Files are read and written as whoever started the binary.
 
-It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental: it usually needs `-forward`, and Windows targets are flakier than Linux or macOS.
+It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental. To make it work:
 
-An ephemeral node gets a new host key each run, so reconnecting to the same name trips SSH's "host key changed" check (VS Code then disables port forwarding). Run with `-persist` for a stable host key, or clear the old entry with `ssh-keygen -R <name>` between runs.
+- Run with `-forward` — Remote-SSH sets up dynamic forwarding.
+- Use `-persist`, or the changing host key of an ephemeral node trips SSH's "host key changed" check and Remote-SSH disables forwarding. (Otherwise clear it with `ssh-keygen -R <name>` between runs.)
+- **On a Windows target, name the binary `sshd.exe`.** Remote-SSH's Windows bootstrap walks up the process tree looking for a parent named `sshd`; if it doesn't find one it gives up. Naming the binary `sshd.exe` satisfies that check.
 
 ---
 

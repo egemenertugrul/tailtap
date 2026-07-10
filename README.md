@@ -68,6 +68,18 @@ Safety does not depend on the code being secret. It depends on your Tailscale au
 
 ---
 
+## Where it fits
+
+Reaching a machine over Tailscale has two halves: a **client** you connect *from*, and a **server** you connect *to*.
+
+tailtap is the **server** half. You run it on the machine you want to reach, and it turns that machine into an SSH target that is already on your tailnet, with nothing to install.
+
+Tools like [`ts-ssh`](https://github.com/derekg/ts-ssh) are the **client** half: they connect out to machines that already run an SSH server. They pair up well. You can use plain `ssh`, or a client like ts-ssh, to reach a machine running tailtap.
+
+So tailtap is useful when the machine you want to reach has no SSH server and no Tailscale set up yet, and you want to change that in one step, then undo it cleanly.
+
+---
+
 ## Security model (read this before using)
 
 `tailtap` is a tool for reaching machines you control. Its safety comes entirely from how you set up the key and the ACL:
@@ -253,7 +265,7 @@ tailtap is a thin layer of glue over some excellent work:
 - [`pkg/sftp`](https://github.com/pkg/sftp): the SFTP subsystem.
 - [`golang.org/x/crypto/ssh`](https://pkg.go.dev/golang.org/x/crypto/ssh): host-key plumbing.
 
-Related projects worth knowing: [`ts-ssh`](https://github.com/derekg/ts-ssh) (a client-side tsnet SSH tool) and [`rospo`](https://github.com/ferama/rospo) (a single-binary reverse-tunnel SSH tool, no Tailscale). tailtap is different because it is the agent side. It joins your tailnet itself and serves a shell, rather than being a client or a classic reverse tunnel.
+See [Where it fits](#where-it-fits) for how tailtap relates to client tools like [`ts-ssh`](https://github.com/derekg/ts-ssh).
 
 ## License
 

@@ -13,3 +13,7 @@ func removeSelf(path string) error { return os.Remove(path) }
 
 // minimizeConsole is a no-op off Windows.
 func minimizeConsole() {}
+
+// becomeSshd is a no-op off Windows: the sshd-name workaround is only needed
+// for VS Code Remote-SSH's Windows bootstrap.
+func becomeSshd() (bool, int) { return false, 0 }

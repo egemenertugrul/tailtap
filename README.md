@@ -148,11 +148,13 @@ Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add 
 
 SFTP is always on, over the same connection — so `scp`, `sftp`, `rsync` over SSH, and VS Code SFTP extensions work with no setup. Files are read and written as whoever started the binary.
 
-It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental. To make it work:
+It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental. Run it with `-vscode`:
 
-- Run with `-forward` — Remote-SSH sets up dynamic forwarding.
-- Use `-persist`, or the changing host key of an ephemeral node trips SSH's "host key changed" check and Remote-SSH disables forwarding. (Otherwise clear it with `ssh-keygen -R <name>` between runs.)
-- **On a Windows target, name the binary `sshd.exe`.** Remote-SSH's Windows bootstrap walks up the process tree looking for a parent named `sshd`; if it doesn't find one it gives up. Naming the binary `sshd.exe` satisfies that check.
+```powershell
+.\tailtap.exe -vscode -persist
+```
+
+`-vscode` turns on `-forward` (Remote-SSH uses dynamic forwarding) and, on Windows, runs the server as `sshd.exe`. Remote-SSH's Windows bootstrap walks up the process tree looking for a parent named `sshd` and gives up if there isn't one; `-vscode` copies the binary to `%TEMP%\sshd.exe` and runs from there so the check passes, then cleans it up on exit. Add `-persist` too, or the changing host key of an ephemeral node trips SSH's "host key changed" check (clear it with `ssh-keygen -R <name>` if that happens).
 
 ---
 
@@ -163,6 +165,7 @@ It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which 
 | `-name` | `tailtap` | Hostname on the tailnet |
 | `-persist` | `false` | Keep the same identity across reboots (not ephemeral) |
 | `-forward` | `false` | Allow port forwarding (`ssh -L` and `-R`) |
+| `-vscode` | `false` | Tune for VS Code Remote-SSH (enables `-forward`, runs as `sshd.exe` on Windows) |
 | `-quiet` | `false` | Hide status logs (errors still print) |
 | `-cleanup` | `false` | **Deprecated.** Auto-delete the binary; unreliable on Windows |
 | `-minimize` | `false` | Minimize the console window (Windows only) |

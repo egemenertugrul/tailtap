@@ -32,12 +32,22 @@ func main() {
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
 	cleanup := flag.Bool("cleanup", false, "[DEPRECATED/experimental] delete this binary when done; unreliable on Windows")
 	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
+	vscode := flag.Bool("vscode", false, "tune for VS Code Remote-SSH: enables -forward and runs as sshd.exe (Windows)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("tailtap", version)
 		return
+	}
+
+	// VS Code Remote-SSH needs port forwarding and, on Windows, a parent process
+	// named sshd. Handle both so the user does not have to rename the binary.
+	if *vscode {
+		*forward = true
+		if relaunched, code := becomeSshd(); relaunched {
+			os.Exit(code)
+		}
 	}
 
 	if *minimize {

@@ -158,6 +158,8 @@ It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, so **V
 
 Then in VS Code connect to the node by name, just like `ssh`.
 
+Since you get a real interactive shell, you can also run CLI tools on the target and drive them from your laptop — for example a coding agent like Claude Code.
+
 ---
 
 ## Flags

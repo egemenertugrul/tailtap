@@ -39,13 +39,19 @@ No ports are opened on the local network. The target needs no Tailscale install,
 
 ## Connect
 
-Each machine has a name on the tailnet. You set it with `-name` when you run the binary, or bake it in at build time (`NAME=booth`, see [Build](#build)) so the person running it types nothing. Say the machine is named `booth`. From your laptop:
+Run the binary on the target, then reach it from your laptop by name. If you pass no `-name`, the name is `tailtap`:
 
 ```bash
-ssh booth
+ssh tailtap
 ```
 
-No password, no key prompt. If no name was set, the default is `tailtap`. You can also use the tailnet IP the binary prints when it starts:
+No password, no key prompt. Give it your own name with `-name`, or bake one in at build time (`NAME=booth`, see [Build](#build)), and connect by that instead:
+
+```bash
+ssh booth              # if you ran: tailtap -name booth
+```
+
+You can also use the tailnet IP the binary prints when it starts:
 
 ```bash
 ssh 100.101.102.103

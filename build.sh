@@ -30,6 +30,12 @@ fi
 mkdir -p dist
 LDFLAGS="-s -w -X main.authKey=$KEY"
 
+# Optional: bake a default tailnet hostname so the binary needs no -name.
+#   NAME=booth ./build.sh <key>
+if [[ -n "${NAME:-}" ]]; then
+  LDFLAGS="$LDFLAGS -X main.defaultName=$NAME"
+fi
+
 build() { # os arch out
   echo ">> $1/$2"
   CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -ldflags "$LDFLAGS" -o "dist/$3" .

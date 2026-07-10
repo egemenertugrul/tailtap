@@ -72,6 +72,12 @@ KEY=tskey-auth-xxxx ./build.sh                        # pass it through the envi
 TS_CLIENT_ID=... TS_CLIENT_SECRET=... ./build.sh      # auto-create a fresh key (see below)
 ```
 
+To bake a default hostname into the binary so it needs no `-name` at runtime, set `NAME`:
+
+```bash
+NAME=booth ./build.sh tskey-auth-xxxx    # binary defaults to hostname "booth"; -name still overrides
+```
+
 ### Auto-creating keys with OAuth (optional)
 
 Instead of clicking a key out of the admin console every time, create a Tailscale OAuth client once (scope: Keys, Auth Keys, Write; allowed tag `tag:tailtap`) and let [`mint-key.sh`](./mint-key.sh) create keys for you:

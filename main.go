@@ -21,8 +21,12 @@ var authKey string
 // Set by the release build via -ldflags "-X main.version=v1.2.3".
 var version = "dev"
 
+// Default tailnet hostname. Bake a per-build default via
+// -ldflags "-X main.defaultName=booth"; -name at runtime still overrides it.
+var defaultName = "tailtap"
+
 func main() {
-	name := flag.String("name", "tailtap", "hostname on the tailnet")
+	name := flag.String("name", defaultName, "hostname on the tailnet")
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
 	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")

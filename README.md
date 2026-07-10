@@ -13,7 +13,7 @@ It is built for one job: walk up to a machine at a venue, lab, or client site, g
         │      encrypted Tailscale tailnet       │
         │        (WireGuard, no open ports)      │
         │                                        ▼
-   ssh you@target ───────────────────────►   tailtap
+   ssh target ────────────────────────────►   tailtap
         │                                     ├─ interactive shell
         ▼                                     └─ SFTP / scp
    you get a shell            joins your tailnet with an ephemeral, tagged key
@@ -21,6 +21,37 @@ It is built for one job: walk up to a machine at a venue, lab, or client site, g
 ```
 
 The only thing crossing the network is the Tailscale connection. tailtap opens no ports on the local network, and the target needs no Tailscale install, no admin rights, and no inbound firewall changes.
+
+---
+
+## Connect
+
+Run the binary on the target machine, then from your own laptop just:
+
+```bash
+ssh nevaremote
+```
+
+That is the whole thing. No password, no key prompt. `nevaremote` is the name the binary was given (with `-name`, or baked in at build time). A few more examples:
+
+```bash
+ssh booth              # a machine started as: tailtap -name booth
+ssh lab-01             # a machine started as: tailtap -name lab-01
+ssh tailtap            # the default name, if none was set
+ssh 100.101.102.103    # or the tailnet IP the binary printed on startup
+```
+
+You do not type a username or a password. The tailnet decides who is allowed in, and the shell runs as whoever launched the binary on the target. (If you like, `ssh user@nevaremote` also works; the user part is ignored.)
+
+Transferring files works the same way, over the same connection:
+
+```bash
+scp report.pdf nevaremote:/tmp/     # send a file
+scp nevaremote:/tmp/out.log .       # get a file
+sftp nevaremote                     # interactive file browser
+```
+
+> If `ssh nevaremote` cannot find the host, MagicDNS is probably off on your laptop, or the name is wrong. Use the tailnet IP the binary printed instead, or check the name in your Tailscale device list.
 
 ---
 
@@ -107,49 +138,18 @@ Never commit `dist/`. It is gitignored because every binary carries a live key.
 
 1. Copy the matching binary to the machine (a USB stick is most reliable at a venue, or a download link if it has internet).
 2. Run it. No admin or root is needed:
-   - **Linux and macOS:** `./tailtap-linux-amd64 -name job-gallery-1`
-   - **Windows:** double-click it, or run `.\tailtap-windows-amd64.exe -name job-gallery-1`. On the SmartScreen "unknown publisher" prompt, click More info, then Run anyway. The binary is unsigned.
+   - **Linux and macOS:** `./tailtap-linux-amd64 -name booth`
+   - **Windows:** double-click it, or run `.\tailtap-windows-amd64.exe -name booth`. On the SmartScreen "unknown publisher" prompt, click More info, then Run anyway. The binary is unsigned.
    - **macOS Gatekeeper:** right-click and choose Open the first time, or run `xattr -d com.apple.quarantine ./tailtap-macos-arm64`.
-3. The machine shows up in your Tailscale device list under `-name`, tagged `tag:tailtap`.
+3. The machine shows up in your Tailscale device list under `-name`, tagged `tag:tailtap`. Then connect with `ssh booth` (see [Connect](#connect)).
 
-Add `-persist` to reconnect as the same node across reboots. Without it the node is ephemeral and removes itself when it goes offline.
+Give each machine a unique `-name`; reusing one makes Tailscale append a number (`booth-1`). Add `-persist` to reconnect as the same node across reboots. Without it the node is ephemeral and removes itself when it goes offline.
 
-## Connect
+## Files and remote editing
 
-```bash
-ssh you@job-gallery-1        # by tailnet MagicDNS name, no password, no key prompt
-ssh you@100.101.102.103      # or by the tailnet IP that tailtap printed on startup
-```
+The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same connection with no extra setup: `scp`, `sftp`, `rsync` over SSH, and editor SFTP extensions (for example the "SFTP" extension in VS Code) for editing remote files. Files are read and written as whoever launched the binary; like the shell, SFTP does no check beyond the tailnet.
 
-The username (`you@`) does not matter for login. The tailnet authorizes you, and the shell runs as whoever launched `tailtap` on the target. `tailtap` always opens an interactive shell. It ignores a command passed as `ssh host 'cmd'`, so request a PTY. Point your automation at the hostname.
-
-### Pick a memorable name
-
-The `-name` you pass becomes the SSH hostname, so give each machine a short, memorable name and connect with exactly that:
-
-| Run on the target | Connect from your laptop |
-|-------------------|--------------------------|
-| `tailtap -name booth`      | `ssh booth` |
-| `tailtap -name gallery-pc` | `ssh gallery-pc` |
-| `tailtap -name lab-01`     | `ssh lab-01` |
-| `tailtap -name reception`  | `ssh reception` |
-
-Without `-name`, nodes get the default `tailtap`, and a second one becomes `tailtap-1`, `tailtap-2`, and so on, which is why a name is worth setting. Names must be unique on your tailnet; reusing a name for a new machine makes Tailscale append a number.
-
-### File transfer (SFTP and scp)
-
-The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same tailnet connection with no extra setup: `sftp`, `scp`, `rsync` over SSH, and editor SFTP extensions (for example the "SFTP" extension in VS Code) for editing remote files.
-
-Note: VS Code **Remote-SSH** (the full remote workspace) does **not** work. It needs to run bootstrap commands non-interactively, and tailtap only opens an interactive shell and ignores commands passed as `ssh host 'cmd'`. Use an SFTP extension for remote file editing instead.
-
-```bash
-sftp you@job-gallery-1                     # interactive, by name
-sftp you@100.101.102.103                   # or by tailnet IP
-scp ./patch.zip you@job-gallery-1:/tmp/    # push (OpenSSH 9+ runs scp over SFTP)
-scp you@100.101.102.103:/tmp/out.log .     # pull, by IP
-```
-
-Files are read and written as whatever user launched `tailtap`. Like the shell, SFTP does no login check beyond the tailnet.
+tailtap also runs one-off commands, not just an interactive shell (`ssh booth 'whoami'`), and supports non-interactive (no-PTY) sessions. That is what tools like VS Code **Remote-SSH** need to bootstrap, so Remote-SSH can work. This is **experimental**; some of its features may also need `-forward` (port forwarding), and Windows targets are less reliable than Linux or macOS.
 
 ---
 
@@ -175,8 +175,8 @@ With `-forward` you can tunnel a TCP port through the node. Two directions:
 - **`-R` (remote):** push a service on your laptop onto the node.
 
 ```bash
-ssh -L 8080:localhost:80 you@job-gallery-1     # -L: a web page on the node shows up at localhost:8080 on your laptop
-ssh -R 9000:localhost:9000 you@job-gallery-1   # -R: a service on your laptop's :9000 shows up on the node
+ssh -L 8080:localhost:80 booth     # -L: a web page on the node shows up at localhost:8080 on your laptop
+ssh -R 9000:localhost:9000 booth   # -R: a service on your laptop's :9000 shows up on the node
 ```
 
 It is off by default to keep the surface small. Only you can reach the node anyway, because of the ACL.

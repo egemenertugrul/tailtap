@@ -148,13 +148,15 @@ Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add 
 
 SFTP is always on, over the same connection — so `scp`, `sftp`, `rsync` over SSH, and VS Code SFTP extensions work with no setup. Files are read and written as whoever started the binary.
 
-It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, which is what VS Code Remote-SSH needs to bootstrap. That path is experimental. Run it with `-vscode`:
+It also runs one-off commands (`ssh booth 'whoami'`) and no-PTY sessions, so **VS Code Remote-SSH works** (tested against a Windows target). Start it with `-vscode`:
 
 ```powershell
 .\tailtap.exe -vscode -persist
 ```
 
-`-vscode` turns on `-forward` (Remote-SSH uses dynamic forwarding) and, on Windows, runs the server as `sshd.exe`. Remote-SSH's Windows bootstrap walks up the process tree looking for a parent named `sshd` and gives up if there isn't one; `-vscode` copies the binary to `%TEMP%\sshd.exe` and runs from there so the check passes, then cleans it up on exit. Add `-persist` too, or the changing host key of an ephemeral node trips SSH's "host key changed" check (clear it with `ssh-keygen -R <name>` if that happens).
+`-vscode` turns on `-forward` (Remote-SSH uses dynamic forwarding) and, on Windows, runs the server as `sshd.exe` — Remote-SSH's Windows bootstrap walks the process tree for a parent named `sshd` and gives up otherwise, so `-vscode` copies the binary to `%TEMP%\sshd.exe`, runs from there, and cleans it up on exit. Use `-persist` too, so the host key stays stable; an ephemeral node's key changes each run, which trips SSH's "host key changed" check and disables forwarding. (If that happens, clear it with `ssh-keygen -R <name>`.)
+
+Then in VS Code connect to the node by name, just like `ssh`.
 
 ---
 

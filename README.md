@@ -29,7 +29,7 @@ No ports are opened on the local network. The target needs no Tailscale install,
 Run it on the target, then from your laptop:
 
 ```bash
-ssh nevaremote
+ssh booth
 ```
 
 No password, no key prompt. The name is whatever you passed to `-name` (or baked in at build time).
@@ -42,8 +42,8 @@ ssh 100.101.102.103    # or the tailnet IP it printed on startup
 The username doesn't matter — the tailnet decides who gets in, and the shell runs as whoever started the binary. Files go over the same connection:
 
 ```bash
-scp report.pdf nevaremote:/tmp/
-sftp nevaremote
+scp report.pdf booth:/tmp/
+sftp booth
 ```
 
 If the name won't resolve, MagicDNS is probably off on your laptop — use the IP instead.

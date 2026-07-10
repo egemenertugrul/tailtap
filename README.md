@@ -159,7 +159,7 @@ Files are read and written as whatever user launched `tailtap`. Like the shell, 
 | `-persist` | `false` | Reconnect as the same node across runs and reboots (not ephemeral) |
 | `-forward` | `false` | Allow SSH port forwarding (`ssh -L` and `-R`) |
 | `-quiet` | `false` | Hide tsnet and status logs (errors still print) |
-| `-cleanup` | `false` | Delete the binary so nothing is left on the target (see below) |
+| `-cleanup` | `false` | **Deprecated / experimental.** Delete the binary when done. Unreliable on Windows (see below) |
 | `-minimize` | `false` | Minimize the console window on start (Windows only) |
 | `-version` | | Print the version and exit |
 
@@ -201,6 +201,8 @@ For more than one key, separate them with newlines (the authorized_keys format).
 - Revoke or rotate the auth key after the job.
 
 ### Deleting the binary automatically (`-cleanup`)
+
+> **Deprecated / experimental.** The Windows path is currently unreliable, so `-cleanup` is not recommended yet. For a guaranteed no-trace run, use the USB-stick approach below instead. This flag will be reworked later.
 
 `-cleanup` makes tailtap remove its own binary so nothing is left on disk:
 

@@ -30,7 +30,7 @@ func main() {
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
 	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
-	cleanup := flag.Bool("cleanup", false, "delete this binary when done (Unix: at startup; Windows: on exit)")
+	cleanup := flag.Bool("cleanup", false, "[DEPRECATED/experimental] delete this binary when done; unreliable on Windows")
 	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -88,6 +88,9 @@ func main() {
 
 	// Self-delete when asked, so nothing is left on the target machine.
 	if *cleanup {
+		// Deprecated: the Windows path is unreliable. Left in but discouraged
+		// until it is reworked. Always warn, even under -quiet.
+		log.Printf("warning: -cleanup is deprecated and experimental; it is unreliable on Windows. Prefer running from a USB stick.")
 		if self, err := os.Executable(); err != nil {
 			infof("cleanup: cannot resolve own path: %v", err)
 		} else if cleanupAtStart {

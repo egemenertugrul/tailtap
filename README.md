@@ -6,6 +6,22 @@ Copy `tailtap` to a Windows, Linux, or macOS machine and run it. It joins your t
 
 It is built for one job: walk up to a machine at a venue, lab, or client site, get remote access for the length of a job, and leave nothing behind. It also works well as a target for automation like Claude Code.
 
+```
+     your laptop                          the target machine
+  (on your tailnet)                      (any OS, no install)
+        │                                        │
+        │      encrypted Tailscale tailnet       │
+        │        (WireGuard, no open ports)      │
+        │                                        ▼
+   ssh you@target ───────────────────────►   tailtap
+        │                                     ├─ interactive shell
+        ▼                                     └─ SFTP / scp
+   you get a shell            joins your tailnet with an ephemeral, tagged key
+                              and disappears again when it stops
+```
+
+The only thing crossing the network is the Tailscale connection. tailtap opens no ports on the local network, and the target needs no Tailscale install, no admin rights, and no inbound firewall changes.
+
 ---
 
 ## How it works
@@ -95,18 +111,21 @@ Add `-persist` to reconnect as the same node across reboots. Without it the node
 ## Connect
 
 ```bash
-ssh you@job-gallery-1     # tailnet MagicDNS name, no password, no key prompt
+ssh you@job-gallery-1        # by tailnet MagicDNS name, no password, no key prompt
+ssh you@100.101.102.103      # or by the tailnet IP that tailtap printed on startup
 ```
 
-`tailtap` always opens an interactive shell. It ignores a command passed as `ssh host 'cmd'`, so request a PTY. Point your automation at the hostname.
+The username (`you@`) does not matter for login. The tailnet authorizes you, and the shell runs as whoever launched `tailtap` on the target. `tailtap` always opens an interactive shell. It ignores a command passed as `ssh host 'cmd'`, so request a PTY. Point your automation at the hostname.
 
 ### File transfer (SFTP and scp)
 
-The SSH server includes an `sftp` subsystem, so file transfer works over the same tailnet connection with no extra setup:
+The SSH server includes a standard `sftp` subsystem, so anything that speaks SFTP works over the same tailnet connection with no extra setup: `sftp`, `scp`, `rsync` over SSH, and editor remote-file tools like VS Code (Remote-SSH or an SFTP extension).
 
 ```bash
-sftp you@job-gallery-1                     # interactive
+sftp you@job-gallery-1                     # interactive, by name
+sftp you@100.101.102.103                   # or by tailnet IP
 scp ./patch.zip you@job-gallery-1:/tmp/    # push (OpenSSH 9+ runs scp over SFTP)
+scp you@100.101.102.103:/tmp/out.log .     # pull, by IP
 ```
 
 Files are read and written as whatever user launched `tailtap`. Like the shell, SFTP does no login check beyond the tailnet.
@@ -121,17 +140,22 @@ Files are read and written as whatever user launched `tailtap`. Like the shell, 
 | `-persist` | `false` | Reconnect as the same node across runs and reboots (not ephemeral) |
 | `-forward` | `false` | Allow SSH port forwarding (`ssh -L` and `-R`) |
 | `-quiet` | `false` | Hide tsnet and status logs (errors still print) |
+| `-cleanup` | `false` | Delete the binary so nothing is left on the target (see below) |
+| `-minimize` | `false` | Minimize the console window on start (Windows only) |
 | `-version` | | Print the version and exit |
 
 For local development you can skip the baked-in key and set `TS_AUTHKEY` in the environment instead.
 
 ### Port forwarding (`-forward`)
 
-With `-forward` you can tunnel through the node:
+With `-forward` you can tunnel a TCP port through the node. Two directions:
+
+- **`-L` (local):** pull a service the node can reach onto your laptop.
+- **`-R` (remote):** push a service on your laptop onto the node.
 
 ```bash
-ssh -L 8080:localhost:80 you@job-gallery-1     # reach a venue-local web page at localhost:8080 on your laptop
-ssh -R 9000:localhost:9000 you@job-gallery-1   # expose a laptop service to the node
+ssh -L 8080:localhost:80 you@job-gallery-1     # -L: a web page on the node shows up at localhost:8080 on your laptop
+ssh -R 9000:localhost:9000 you@job-gallery-1   # -R: a service on your laptop's :9000 shows up on the node
 ```
 
 It is off by default to keep the surface small. Only you can reach the node anyway, because of the ACL.
@@ -156,6 +180,15 @@ For more than one key, separate them with newlines (the authorized_keys format).
 - Kill the process. An ephemeral node removes itself from your tailnet within a few minutes.
 - Delete the binary off the target. It carries a live key.
 - Revoke or rotate the auth key after the job.
+
+### Deleting the binary automatically (`-cleanup`)
+
+`-cleanup` makes tailtap remove its own binary so nothing is left on disk:
+
+- **Linux and macOS:** the file is unlinked the moment it starts. The process keeps running from memory, so even a hard power-off leaves nothing behind.
+- **Windows:** a running `.exe` is locked, so the file is deleted when the process exits normally (Ctrl-C, or closing the console window). If it is hard-killed from Task Manager, the file stays and you delete it by hand.
+
+The simplest zero-trace option needs no flag at all: run the binary straight from a USB stick and pull the stick when you are done.
 
 ---
 

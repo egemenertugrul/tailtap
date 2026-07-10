@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"tailscale.com/tsnet"
@@ -24,12 +26,18 @@ func main() {
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
 	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
+	cleanup := flag.Bool("cleanup", false, "delete this binary when done (Unix: at startup; Windows: on exit)")
+	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("tailtap", version)
 		return
+	}
+
+	if *minimize {
+		minimizeConsole()
 	}
 
 	infof := func(format string, args ...any) {
@@ -73,6 +81,31 @@ func main() {
 		s.UserLogf = noop
 	}
 	defer s.Close()
+
+	// Self-delete when asked, so nothing is left on the target machine.
+	if *cleanup {
+		if self, err := os.Executable(); err != nil {
+			infof("cleanup: cannot resolve own path: %v", err)
+		} else if cleanupAtStart {
+			// Unix: unlink now; we keep running from the open inode.
+			if err := removeSelf(self); err != nil {
+				infof("cleanup: could not remove binary: %v", err)
+			} else {
+				infof("cleanup: removed on-disk binary (running from memory)")
+			}
+		} else {
+			// Windows: the file is locked while running, so delete on exit.
+			sigc := make(chan os.Signal, 1)
+			signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+			go func() {
+				<-sigc
+				infof("cleanup: deleting binary on exit")
+				_ = removeSelf(self)
+				s.Close()
+				os.Exit(0)
+			}()
+		}
+	}
 
 	// Bring the node up and report the assigned tailnet IP.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

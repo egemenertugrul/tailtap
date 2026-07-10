@@ -26,30 +26,29 @@ No ports are opened on the local network. The target needs no Tailscale install,
 
 ## Features
 
-- One self-contained binary. Nothing to install on the target, no admin or root.
-- Joins your Tailscale network and serves its own SSH server, bound only to the tailnet.
-- Interactive shell, plus SFTP and scp file transfer over the same connection.
-- Optional port forwarding, and VS Code Remote-SSH support.
-- Windows, Linux, and macOS. Static build, no dependencies.
-- Ephemeral by default, so it leaves nothing behind. `-persist` keeps a stable identity.
-- Access is controlled by your tailnet and ACL, not passwords or keys on the target.
-- Bake the key, hostname, and flags at build time so it runs with a double-click.
+- **One self-contained binary.** Nothing to install on the target, no admin or root.
+- **Joins your Tailscale network by itself** and serves its own SSH server, bound only to the tailnet.
+- **Shell, SFTP, and scp** over a single connection.
+- **Port forwarding** and **VS Code Remote-SSH** support.
+- **Windows, Linux, and macOS.** Static build, no dependencies.
+- **Ephemeral by default**, so it leaves nothing behind. `-persist` keeps a stable identity.
+- **Auth is your tailnet and ACL**, not passwords or keys on the target.
+- **Bake the key, name, and flags at build time** so it runs with a double-click.
 
 ---
 
 ## Connect
 
-Run it on the target, then from your laptop:
+When you start the binary you give the machine a name with `-name`. Say you ran `tailtap -name booth` on the target. That name, `booth`, is how you reach it. From your laptop:
 
 ```bash
-ssh booth
+ssh booth              # the machine you started with: tailtap -name booth
 ```
 
-No password, no key prompt. The name is whatever you passed to `-name` (or baked in at build time).
+No password, no key prompt. If you didn't pass a name, the default is `tailtap`. You can also use the tailnet IP the binary prints when it starts:
 
 ```bash
-ssh booth              # started as: tailtap -name booth
-ssh 100.101.102.103    # or the tailnet IP it printed on startup
+ssh 100.101.102.103
 ```
 
 The username doesn't matter. The tailnet decides who gets in, and the shell runs as whoever started the binary. Files go over the same connection:
@@ -90,7 +89,7 @@ Reach for tailtap when a machine has no SSH server and no Tailscale yet, and you
 Safety is all in how you make the key and the ACL:
 
 1. Make the auth key **ephemeral, expiring, and tagged**: Reusable, Ephemeral, Pre-authorized, tag `tag:tailtap`, short expiry.
-2. The key lives inside every binary in `dist/`. Treat those like passwords: delete them off the target after the job, then revoke the key.
+2. The key is baked into every binary you build, so treat each one like a password: delete it off the target after the job, then revoke the key.
 3. Fence the node in so only you can reach it and it can reach nothing else:
 
 ```jsonc

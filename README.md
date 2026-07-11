@@ -118,6 +118,21 @@ You can also require your own SSH key on top of the tailnet check. See [Flags](#
 
 ## Build
 
+### Where the key comes from
+
+tailtap needs a Tailscale auth key to join your tailnet, and there are two ways to give it one. They lead to a different experience:
+
+- **Baked in at build time.** Run `./build.sh <key>` with your own key and it ends up inside the binary. This is the drop-it-and-go path: the exe runs with nothing to type, so someone can double-click it or you can leave it on a USB stick. It is also why a keyed binary is a live credential, which is why you never publish one.
+- **Given at runtime.** A binary with no baked key reads `TS_AUTHKEY` from the environment instead:
+
+  ```bash
+  TS_AUTHKEY=tskey-auth-xxxx ./tailtap -name booth
+  ```
+
+Anything published here is keyless, because a public download can't safely carry a key. That means the [GitHub Releases](../../releases) and a plain `go build`. A keyless binary is the same tool and behaves the same once it's up, but you supply the key on every run and there is no double-click-and-done. For that experience, build your own with your key, as below.
+
+### Build with your key baked in
+
 Bring your own auth key. It's injected at build time and never stored in the repo.
 
 ```bash
@@ -161,6 +176,8 @@ It mints a fresh key per build by default, which matches the "revoke after each 
    - **Windows:** double-click, or `.\tailtap-windows-amd64.exe -name booth`. It's unsigned, so SmartScreen warns: click More info, then Run anyway. The first run may also show a Windows Firewall prompt. It asks to let the app talk on the network, not for admin over the machine, and you can allow or cancel it. Tailscale still connects through its relay either way.
    - **macOS:** first run, right-click → Open (or `xattr -d com.apple.quarantine ./tailtap-macos-arm64`).
 3. It shows up in your device list, tagged `tag:tailtap`, under the name you gave it (or the machine's hostname by default). Connect with `ssh booth`.
+
+The examples above assume the key is baked in (a `./build.sh` binary). If you downloaded a keyless one (a Release, or `go build`), pass your key on the run, since nothing is baked in: `TS_AUTHKEY=tskey-auth-xxxx ./tailtap-linux-amd64 -name booth`. See [Where the key comes from](#where-the-key-comes-from).
 
 Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add `-persist` to keep the same identity across reboots. Without it the node is ephemeral and vanishes when it stops.
 

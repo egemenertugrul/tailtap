@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -18,10 +19,19 @@ import (
 	pty "github.com/aymanbagabas/go-pty"
 )
 
+// activeSessions counts live SSH sessions, reported by the heartbeat log line.
+var activeSessions atomic.Int64
+
 // sessionHandler runs either an interactive shell (no command given) or the
 // requested command (e.g. `ssh host 'cmd'`, or the bootstrap commands tools
 // like VS Code Remote-SSH send). It works with or without a PTY.
 func sessionHandler(s ssh.Session) {
+	n := activeSessions.Add(1)
+	infoLog("session opened from %s (%d active)", s.RemoteAddr(), n)
+	defer func() {
+		infoLog("session closed from %s (%d active)", s.RemoteAddr(), activeSessions.Add(-1))
+	}()
+
 	ptyReq, winCh, isPty := s.Pty()
 
 	// Pick what to run: an explicit command via the login shell, or the shell
@@ -157,6 +167,9 @@ func execExitStatus(waitErr error) int {
 }
 
 func defaultShell() (string, []string) {
+	if shellOverride != "" {
+		return shellOverride, nil
+	}
 	if runtime.GOOS == "windows" {
 		// Prefer PowerShell 7, then Windows PowerShell, then cmd.
 		for _, sh := range []string{"pwsh.exe", "powershell.exe", "cmd.exe"} {

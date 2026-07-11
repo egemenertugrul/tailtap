@@ -31,10 +31,20 @@ var defaultName = "tailtap"
 // command line overrides them. Values cannot contain spaces.
 var bakedFlags string
 
+// infoLog prints status and heartbeat lines to the console (stderr). It is
+// swapped for a no-op under -quiet.
+var infoLog = log.Printf
+
+// shellOverride, when set via -shell, replaces the auto-detected login shell.
+var shellOverride string
+
 func main() {
-	name := flag.String("name", defaultName, "hostname on the tailnet")
+	name := flag.String("name", defaultName, "hostname on the tailnet (default: this machine's hostname)")
 	persist := flag.Bool("persist", false, "reconnect as the same node across runs/reboots")
-	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R)")
+	forward := flag.Bool("forward", false, "allow SSH port forwarding (-L / -R / -D)")
+	shell := flag.String("shell", "", "shell to run for sessions (default: auto-detect)")
+	web := flag.Bool("web", false, "serve a file browser over HTTP on the tailnet (download/upload)")
+	webRoot := flag.String("webroot", ".", "directory the -web file browser serves")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
 	cleanup := flag.Bool("cleanup", false, "[DEPRECATED/experimental] delete this binary when done; unreliable on Windows")
 	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
@@ -66,9 +76,25 @@ func main() {
 		minimizeConsole()
 	}
 
-	infof := func(format string, args ...any) {
-		if !*quiet {
-			log.Printf(format, args...)
+	if *quiet {
+		infoLog = func(string, ...any) {}
+	}
+	shellOverride = *shell
+
+	// Default the node name to this machine's hostname, so several machines each
+	// running tailtap don't collide on one name. An explicit -name or a baked-in
+	// NAME= still wins.
+	nameSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "name" {
+			nameSet = true
+		}
+	})
+	if !nameSet && defaultName == "tailtap" {
+		if h, err := os.Hostname(); err == nil {
+			if clean := sanitizeName(h); clean != "" {
+				*name = clean
+			}
 		}
 	}
 
@@ -114,13 +140,13 @@ func main() {
 		// until it is reworked. Always warn, even under -quiet.
 		log.Printf("warning: -cleanup is deprecated and experimental; it is unreliable on Windows. Prefer running from a USB stick.")
 		if self, err := os.Executable(); err != nil {
-			infof("cleanup: cannot resolve own path: %v", err)
+			infoLog("cleanup: cannot resolve own path: %v", err)
 		} else if cleanupAtStart {
 			// Unix: unlink now; we keep running from the open inode.
 			if err := removeSelf(self); err != nil {
-				infof("cleanup: could not remove binary: %v", err)
+				infoLog("cleanup: could not remove binary: %v", err)
 			} else {
-				infof("cleanup: removed on-disk binary (running from memory)")
+				infoLog("cleanup: removed on-disk binary (running from memory)")
 			}
 		} else {
 			// Windows: the file is locked while running, so delete on exit.
@@ -128,7 +154,7 @@ func main() {
 			signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 			go func() {
 				<-sigc
-				infof("cleanup: deleting binary on exit")
+				infoLog("cleanup: deleting binary on exit")
 				_ = removeSelf(self)
 				s.Close()
 				os.Exit(0)
@@ -143,7 +169,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("tailscale up failed: %v", err)
 	}
-	infof("online as %q  ip=%v", *name, st.TailscaleIPs)
+	infoLog("online as %q  ip=%v", *name, st.TailscaleIPs)
 
 	// SECURITY: this listener accepts ONLY tailnet connections.
 	// It MUST be s.Listen (tsnet), never net.Listen on 0.0.0.0.
@@ -152,7 +178,53 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Optional file browser over HTTP, also bound only to the tailnet.
+	if *web {
+		wln, err := s.Listen("tcp", ":80")
+		if err != nil {
+			log.Fatalf("web listen: %v", err)
+		}
+		root, err := filepath.Abs(*webRoot)
+		if err != nil {
+			root = *webRoot
+		}
+		infoLog("file browser on http://%s/ (serving %s)", *name, root)
+		go func() {
+			if err := serveWeb(wln, root); err != nil {
+				log.Printf("web server stopped: %v", err)
+			}
+		}()
+	}
+
+	// Heartbeat: a periodic sign-of-life with uptime and live session count.
+	// Silent under -quiet (infoLog is a no-op then).
+	start := time.Now()
+	go func() {
+		t := time.NewTicker(15 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			infoLog("heartbeat: up %s, %d active session(s)",
+				time.Since(start).Round(time.Second), activeSessions.Load())
+		}
+	}()
+
 	srv := newSSHServer(stateDir, *forward)
-	infof("ssh server listening on tailnet:22")
+	infoLog("ssh server listening on tailnet:22")
 	log.Fatal(srv.Serve(ln))
+}
+
+// sanitizeName lowercases a machine hostname and keeps only characters valid in
+// a tailnet name, so an unusual hostname still yields a usable node name.
+func sanitizeName(h string) string {
+	h = strings.ToLower(strings.TrimSpace(h))
+	var b strings.Builder
+	for _, r := range h {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == '.', r == ' ', r == '_':
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

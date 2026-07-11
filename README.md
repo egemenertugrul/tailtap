@@ -29,7 +29,8 @@ No ports are opened on the local network. The target needs no Tailscale install,
 - **One self-contained binary.** Nothing to install on the target, no admin or root.
 - **Joins your Tailscale network by itself** and serves its own SSH server, bound only to the tailnet.
 - **Shell, SFTP, and scp** over a single connection.
-- **Port forwarding** and **VS Code Remote-SSH** support.
+- **Port forwarding and a SOCKS proxy** (`ssh -L`, `-R`, `-D`), plus **VS Code Remote-SSH** support.
+- **Optional file browser** (`-web`) to upload and download from a web browser.
 - **Windows, Linux, and macOS.** Static build, no dependencies.
 - **Ephemeral by default**, so it leaves nothing behind. `-persist` keeps a stable identity.
 - **Auth is your tailnet and ACL**, not passwords or keys on the target.
@@ -39,13 +40,13 @@ No ports are opened on the local network. The target needs no Tailscale install,
 
 ## Connect
 
-Run the binary on the target, then reach it from your laptop by name. If you pass no `-name`, the name is `tailtap`:
+Run the binary on the target. It prints the name it came up under, then you reach it from your laptop by that name. By default the name is the target machine's own hostname, so two machines never clash:
 
 ```bash
-ssh tailtap
+ssh mymachine
 ```
 
-No password, no key prompt. Give it your own name with `-name`, or bake one in at build time (`NAME=booth`, see [Build](#build)), and connect by that instead:
+No password, no key prompt. To choose the name yourself, pass `-name`, or bake one in at build time (`NAME=booth`, see [Build](#build)), and connect by that instead:
 
 ```bash
 ssh booth              # if you ran: tailtap -name booth
@@ -157,11 +158,13 @@ It mints a fresh key per build by default, which matches the "revoke after each 
 1. Copy the right binary over (a USB stick is most reliable at a venue).
 2. Run it (no admin needed):
    - **Linux and macOS:** `./tailtap-linux-amd64 -name booth`
-   - **Windows:** double-click, or `.\tailtap-windows-amd64.exe -name booth`. It's unsigned, so SmartScreen warns. Click More info, then Run anyway.
+   - **Windows:** double-click, or `.\tailtap-windows-amd64.exe -name booth`. It's unsigned, so SmartScreen warns: click More info, then Run anyway. The first run may also show a Windows Firewall prompt. It asks to let the app talk on the network, not for admin over the machine, and you can allow or cancel it. Tailscale still connects through its relay either way.
    - **macOS:** first run, right-click → Open (or `xattr -d com.apple.quarantine ./tailtap-macos-arm64`).
-3. It shows up in your device list under `-name`, tagged `tag:tailtap`. Connect with `ssh booth`.
+3. It shows up in your device list, tagged `tag:tailtap`, under the name you gave it (or the machine's hostname by default). Connect with `ssh booth`.
 
 Give each machine a unique name, or Tailscale appends a number (`booth-1`). Add `-persist` to keep the same identity across reboots. Without it the node is ephemeral and vanishes when it stops.
+
+It keeps running in the foreground and prints a line for each connection plus a heartbeat every so often. `-quiet` silences those. Stop it with Ctrl+C or by closing the window.
 
 ---
 
@@ -181,17 +184,30 @@ Then in VS Code connect to the node by name, just like `ssh`.
 
 Since you get a real interactive shell, you can also run CLI tools on the target and drive them from your laptop, for example a coding agent like Claude Code.
 
+### Browse files from a browser
+
+Add `-web` and tailtap serves a small file page over the tailnet, on the node's port 80:
+
+```powershell
+.\tailtap.exe -web
+```
+
+Open `http://booth/` on your laptop to list, download, and upload files. It serves the current directory by default; point it elsewhere with `-webroot`. The same tailnet ACL guards it, and files are read and written as whoever started the binary. Useful when the other end can't use scp or SFTP.
+
 ---
 
 ## Flags
 
 | Flag | Default | What it does |
 |------|---------|------|
-| `-name` | `tailtap` | Hostname on the tailnet |
+| `-name` | machine hostname | Hostname on the tailnet |
 | `-persist` | `false` | Keep the same identity across reboots (not ephemeral) |
-| `-forward` | `false` | Allow port forwarding (`ssh -L` and `-R`) |
+| `-forward` | `false` | Allow port forwarding and SOCKS (`ssh -L`, `-R`, `-D`) |
+| `-shell` | auto | Shell to run for sessions, overriding auto-detection |
+| `-web` | `false` | Serve a browser file page over the tailnet (download/upload) |
+| `-webroot` | `.` | Directory `-web` serves |
 | `-vscode` | `false` | Tune for VS Code Remote-SSH (enables `-forward`, runs as `sshd.exe` on Windows) |
-| `-quiet` | `false` | Hide status logs (errors still print) |
+| `-quiet` | `false` | Hide status logs and the heartbeat (errors still print) |
 | `-cleanup` | `false` | **Deprecated.** Auto-delete the binary; unreliable on Windows |
 | `-minimize` | `false` | Minimize the console window (Windows only) |
 | `-version` | | Print the version and exit |
@@ -200,12 +216,15 @@ For local dev you can skip the baked key and set `TS_AUTHKEY` in the environment
 
 ### Port forwarding (`-forward`)
 
-Off by default. Turn it on to tunnel a port:
+Off by default. Turn it on to tunnel a port or proxy through the node:
 
 ```bash
 ssh -L 8080:localhost:80 booth     # pull a service the node can reach onto your laptop
 ssh -R 9000:localhost:9000 booth   # push a service on your laptop onto the node
+ssh -D 1080 booth                  # SOCKS proxy out through the node
 ```
+
+`-L` reaches a specific host the node can see, like a printer or a device on the venue LAN, so you rarely need a Tailscale subnet router. `-D` gives you a SOCKS proxy that goes out through the node, which covers the exit-node case of "come out where the node is." Both run in userspace with no admin and no extra setup, which a real subnet router or exit node would need.
 
 ### Require your SSH key (optional)
 

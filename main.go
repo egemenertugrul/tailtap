@@ -45,6 +45,8 @@ func main() {
 	shell := flag.String("shell", "", "shell to run for sessions (default: auto-detect)")
 	web := flag.Bool("web", false, "serve a file browser over HTTP on the tailnet (download/upload)")
 	webRoot := flag.String("webroot", ".", "directory the -web file browser serves")
+	mcpCmd := flag.String("mcp-cmd", "", "run this stdio MCP server and expose it over the tailnet at http://<name>:<mcp-port>/mcp")
+	mcpPort := flag.String("mcp-port", "8080", "tailnet port for the -mcp-cmd endpoint")
 	quiet := flag.Bool("quiet", false, "suppress tsnet and informational logs (errors still print)")
 	cleanup := flag.Bool("cleanup", false, "[DEPRECATED/experimental] delete this binary when done; unreliable on Windows")
 	minimize := flag.Bool("minimize", false, "minimize the console window on start (Windows only)")
@@ -192,6 +194,22 @@ func main() {
 		go func() {
 			if err := serveWeb(wln, root); err != nil {
 				log.Printf("web server stopped: %v", err)
+			}
+		}()
+	}
+
+	// Optional MCP bridge: run a local stdio MCP server and expose it over the
+	// tailnet, so a laptop-side agent can drive this machine (UI automation,
+	// files, etc.) with the tailnet ACL as the only gate.
+	if *mcpCmd != "" {
+		mln, err := s.Listen("tcp", ":"+*mcpPort)
+		if err != nil {
+			log.Fatalf("mcp listen: %v", err)
+		}
+		infoLog("mcp endpoint on http://%s:%s/mcp", *name, *mcpPort)
+		go func() {
+			if err := startMCPBridge(mln, *mcpCmd, *name); err != nil {
+				log.Printf("mcp bridge stopped: %v", err)
 			}
 		}()
 	}

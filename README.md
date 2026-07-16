@@ -1,10 +1,10 @@
 # tailtap
 
-**Drop one binary on any machine and SSH into it over your Tailscale network. Nothing to install on the target, no login there, no keys to copy.**
+**A portable binary to quickly let a PC in your tailnet.**
 
-Run it on a Windows, Linux, or macOS machine. It joins your tailnet and serves a shell. You connect from your laptop by name. Kill it and the machine drops off your network.
+When a compiled tailtap binary is executed, the PC immediately joins your tailnet and serves a shell. Then, you may connect to it by its name. After you stop it, the machine drops off the network.
 
-It's for one thing: get into a machine at a venue, lab, or client site for the length of a job, then leave nothing behind. Works well as an automation target too.
+It's useful to get into a machine at a venue, lab, or client site for the length of a job. You can let AI agents like Claude or GPT to control your headless PCs. Or just use as an automation target.
 
 ```
      your laptop                          the target machine
